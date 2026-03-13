@@ -18,6 +18,7 @@ function SigningContent({ roomId }: { roomId: string }) {
     document: doc,
     setDocument,
     clearDocument,
+    clearPageOverlays,
     pageOverlays,
     setPageOverlay,
   } = useSigning();
@@ -36,6 +37,13 @@ function SigningContent({ roomId }: { roomId: string }) {
   const handlePageOverlay = (pageNum: number, dataUrl: string) => {
     setPageOverlay(pageNum, dataUrl);
     syncOverlayToSupabase(pageNum, dataUrl);
+  };
+
+  const handleRestart = async () => {
+    clearPageOverlays();
+    if (supabase) {
+      await supabase.from("signing_page_overlays").delete().eq("room_id", roomId);
+    }
   };
 
   const handleDownload = async () => {
@@ -96,6 +104,13 @@ function SigningContent({ roomId }: { roomId: string }) {
           </h1>
           {hasDocument && (
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRestart}
+                className="px-4 py-2 rounded-lg border border-amber-500/70 dark:border-amber-400/50 text-amber-700 dark:text-amber-400 text-sm font-medium hover:bg-amber-50 dark:hover:bg-amber-950/50 transition-colors"
+              >
+                Restart
+              </button>
               <button
                 type="button"
                 onClick={handleDownload}
@@ -209,7 +224,7 @@ export default function SignPage() {
 
 /** Subscribes to Supabase Realtime and syncs document + overlays into context */
 function RealtimeSync({ roomId }: { roomId: string }) {
-  const { setDocument, setPageOverlay } = useSigning();
+  const { setDocument, setPageOverlay, clearPageOverlay } = useSigning();
 
   useEffect(() => {
     const client = supabase;
@@ -278,8 +293,13 @@ function RealtimeSync({ roomId }: { roomId: string }) {
           filter: `room_id=eq.${roomId}`,
         },
         (payload) => {
-          const row = payload.new as { page_num: number; data_url: string };
-          if (row) setPageOverlay(row.page_num, row.data_url);
+          if (payload.eventType === "DELETE") {
+            const row = payload.old as { page_num: number };
+            if (row?.page_num != null) clearPageOverlay(row.page_num);
+          } else {
+            const row = payload.new as { page_num: number; data_url: string };
+            if (row) setPageOverlay(row.page_num, row.data_url);
+          }
         }
       )
       .subscribe();
@@ -287,7 +307,7 @@ function RealtimeSync({ roomId }: { roomId: string }) {
     return () => {
       client.removeChannel(roomChannel);
     };
-  }, [roomId, setDocument, setPageOverlay]);
+  }, [roomId, setDocument, setPageOverlay, clearPageOverlay]);
 
   return null;
 }
