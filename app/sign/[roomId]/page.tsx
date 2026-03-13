@@ -212,13 +212,14 @@ function RealtimeSync({ roomId }: { roomId: string }) {
   const { setDocument, setPageOverlay } = useSigning();
 
   useEffect(() => {
-    if (!supabase) return;
+    const client = supabase;
+    if (!client) return;
 
     // Fetch initial room + overlays
     async function loadInitial() {
       const [roomRes, overlaysRes] = await Promise.all([
-        supabase.from("signing_rooms").select("*").eq("id", roomId).single(),
-        supabase.from("signing_page_overlays").select("*").eq("room_id", roomId),
+        client!.from("signing_rooms").select("*").eq("id", roomId).single(),
+        client!.from("signing_page_overlays").select("*").eq("room_id", roomId),
       ]);
 
       if (roomRes.data?.document_url) {
@@ -243,7 +244,7 @@ function RealtimeSync({ roomId }: { roomId: string }) {
     }
     loadInitial();
 
-    const roomChannel = supabase
+    const roomChannel = client
       .channel(`room:${roomId}`)
       .on(
         "postgres_changes",
@@ -284,7 +285,7 @@ function RealtimeSync({ roomId }: { roomId: string }) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(roomChannel);
+      client.removeChannel(roomChannel);
     };
   }, [roomId, setDocument, setPageOverlay]);
 
