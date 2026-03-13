@@ -23,6 +23,7 @@ interface SigningContextType {
   /** Full-screen drawn signatures per page - draw directly on document lines */
   pageOverlays: PageOverlays;
   setPageOverlay: (pageNum: number, dataUrl: string) => void;
+  clearPageOverlay: (pageNum: number) => void;
   clearPageOverlays: () => void;
   signature1: SignatureData | null;
   signature2: SignatureData | null;
@@ -60,6 +61,14 @@ export function SigningProvider({ children }: { children: React.ReactNode }) {
     setPageOverlaysState((prev) => ({ ...prev, [pageNum]: dataUrl }));
   }, []);
 
+  const clearPageOverlay = useCallback((pageNum: number) => {
+    setPageOverlaysState((prev) => {
+      const next = { ...prev };
+      delete next[pageNum];
+      return next;
+    });
+  }, []);
+
   const clearPageOverlays = useCallback(() => setPageOverlaysState({}), []);
 
   const setSignature1 = useCallback((data: SignatureData | null) => {
@@ -83,6 +92,7 @@ export function SigningProvider({ children }: { children: React.ReactNode }) {
         clearDocument,
         pageOverlays,
         setPageOverlay,
+        clearPageOverlay,
         clearPageOverlays,
         signature1,
         signature2,

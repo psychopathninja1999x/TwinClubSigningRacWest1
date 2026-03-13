@@ -18,6 +18,7 @@ function SigningContent({ roomId }: { roomId: string }) {
     document: doc,
     setDocument,
     clearDocument,
+    clearPageOverlays,
     pageOverlays,
     setPageOverlay,
   } = useSigning();
@@ -36,6 +37,16 @@ function SigningContent({ roomId }: { roomId: string }) {
   const handlePageOverlay = (pageNum: number, dataUrl: string) => {
     setPageOverlay(pageNum, dataUrl);
     syncOverlayToSupabase(pageNum, dataUrl);
+  };
+
+  const handleRestart = async () => {
+    clearPageOverlays();
+    if (supabase) {
+      await supabase
+        .from("signing_page_overlays")
+        .delete()
+        .eq("room_id", roomId);
+    }
   };
 
   const handleDownload = async () => {
@@ -96,6 +107,13 @@ function SigningContent({ roomId }: { roomId: string }) {
           </h1>
           {hasDocument && (
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRestart}
+                className="px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-300 text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              >
+                Restart
+              </button>
               <button
                 type="button"
                 onClick={handleDownload}
@@ -209,16 +227,17 @@ export default function SignPage() {
 
 /** Subscribes to Supabase Realtime and syncs document + overlays into context */
 function RealtimeSync({ roomId }: { roomId: string }) {
-  const { setDocument, setPageOverlay } = useSigning();
+  const { setDocument, setPageOverlay, clearPageOverlay } = useSigning();
 
   useEffect(() => {
-    if (!supabase) return;
+    const client = supabase;
+    if (!client) return;
 
     // Fetch initial room + overlays
     async function loadInitial() {
       const [roomRes, overlaysRes] = await Promise.all([
-        supabase.from("signing_rooms").select("*").eq("id", roomId).single(),
-        supabase.from("signing_page_overlays").select("*").eq("room_id", roomId),
+        client!.from("signing_rooms").select("*").eq("id", roomId).single(),
+        client!.from("signing_page_overlays").select("*").eq("room_id", roomId),
       ]);
 
       if (roomRes.data?.document_url) {
@@ -243,7 +262,7 @@ function RealtimeSync({ roomId }: { roomId: string }) {
     }
     loadInitial();
 
-    const roomChannel = supabase
+    const roomChannel = client
       .channel(`room:${roomId}`)
       .on(
         "postgres_changes",
@@ -277,16 +296,21 @@ function RealtimeSync({ roomId }: { roomId: string }) {
           filter: `room_id=eq.${roomId}`,
         },
         (payload) => {
-          const row = payload.new as { page_num: number; data_url: string };
-          if (row) setPageOverlay(row.page_num, row.data_url);
+          if (payload.eventType === "DELETE") {
+            const row = payload.old as { page_num?: number };
+            if (row?.page_num != null) clearPageOverlay(row.page_num);
+          } else {
+            const row = payload.new as { page_num: number; data_url: string };
+            if (row) setPageOverlay(row.page_num, row.data_url);
+          }
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(roomChannel);
+      client.removeChannel(roomChannel);
     };
-  }, [roomId, setDocument, setPageOverlay]);
+  }, [roomId, setDocument, setPageOverlay, clearPageOverlay]);
 
   return null;
 }
